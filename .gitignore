@@ -1,0 +1,19 @@
+# Raw data and large feature files live on the shared drive
+data/*
+!data/.gitkeep
+*.npy
+*.npz
+*.pt
+*.pth
+
+# Python / notebooks
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.venv/
+venv/
+
+# OS / editors
+.DS_Store
+.vscode/
+.idea/
