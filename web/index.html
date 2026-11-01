@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Triage Squares</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+  :root { --ink: #1d232e; --muted: #667085; --line: #e3e6eb; --bg: #fafbfc; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 20px 24px 48px; font: 13px/1.5 -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", sans-serif; color: var(--ink); background: var(--bg); }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 24px; margin-bottom: 8px; }
+  h1 { font-size: 18px; margin: 0; }
+  .controls { display: flex; gap: 16px; align-items: center; color: var(--muted); }
+  .controls label { cursor: pointer; }
+  .legend { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; color: var(--muted); margin: 4px 0 12px; }
+  .legend svg { vertical-align: middle; margin-right: 4px; }
+  .panel { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 12px 8px 4px; margin-bottom: 14px; overflow-x: auto; }
+  .panel-title { padding: 0 8px; font-size: 14px; }
+  .panel-title span { color: var(--muted); margin-left: 8px; font-size: 12px; }
+  .col-name { font-size: 12px; font-weight: 600; fill: var(--ink); }
+  .col-stat { font-size: 10.5px; fill: var(--muted); }
+  .class-axis { stroke: #8a919c; stroke-width: 1; }
+  .bin-guides line { stroke: #f0f1f4; }
+  .score-axis text { fill: var(--muted); font-size: 10px; }
+  .score-axis path, .score-axis line { stroke: #b8bec7; }
+  .cell { cursor: pointer; transition: opacity .12s; }
+  .cell.dim { opacity: .18; }
+  .cell.selected { stroke: var(--ink) !important; stroke-width: 2 !important; }
+  .sq-tooltip { position: fixed; pointer-events: none; opacity: 0; background: #1d232e; color: #fff; padding: 6px 9px; border-radius: 6px; font-size: 12px; line-height: 1.45; z-index: 10; max-width: 260px; }
+  .instance-table { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; }
+  .instance-table .hint { color: var(--muted); margin: 0; }
+  .table-caption { margin: 0 0 8px; color: var(--muted); }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 4px 10px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; }
+  .thumb { width: 32px; height: 32px; image-rendering: pixelated; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Triage Squares</h1>
+  <div class="controls">
+    Box width:
+    <label><input type="radio" name="scale" value="linear" checked> proportional to count</label>
+    <label><input type="radio" name="scale" value="sqrt"> square root (enlarges small groups)</label>
+  </div>
+</header>
+
+<div class="legend">
+  <span><svg width="22" height="12"><rect width="22" height="12" fill="#4e79a7"/></svg>Solid: correct prediction (color = true class)</span>
+  <span><svg width="22" height="12"><defs><pattern id="lg-stripe" patternUnits="userSpaceOnUse" width="4" height="4" patternTransform="rotate(45)"><rect width="4" height="4" fill="#e15759" fill-opacity=".18"/><line x1="0" y1="0" x2="0" y2="4" stroke="#e15759" stroke-width="2.2"/></pattern></defs><rect width="22" height="12" fill="url(#lg-stripe)" stroke="#e15759" stroke-width=".8"/></svg>Striped: false positive, right of the predicted class's axis (color = true class)</span>
+  <span><svg width="22" height="12"><rect x="1" y="1" width="20" height="10" fill="#fff" stroke="#59a14f" stroke-width="1.6"/></svg>Outlined: false negative, left of the true class's axis (color = predicted class)</span>
+</div>
+
+<div id="app"></div>
+
+<script src="squares.js"></script>
+<script>
+  // Default: the MNIST model comparison. Other data via the URL, e.g.
+  //   index.html?files=data/cifar10.json&titles=ResNet20
+  const params = new URLSearchParams(location.search);
+  const files = (params.get("files") || "data/mnist_rf.json,data/mnist_svm.json").split(",");
+  const titles = (params.get("titles") || "Random forest,SVM").split(",");
+  const panels = files.map((file, k) => ({ file, title: titles[k] || file }));
+  const sprite = params.get("sprite")
+    ? { url: params.get("sprite"), cols: +(params.get("cols") || 100), size: +(params.get("size") || 32) }
+    : null;
+
+  Squares.render("#app", panels, { sprite }).then(view => {
+    document.querySelectorAll("input[name=scale]").forEach(r =>
+      r.addEventListener("change", e => view.setScale(e.target.value)));
+  }).catch(err => {
+    document.getElementById("app").innerHTML =
+      `<p style="color:#b42318">Could not load data: ${err.message}. Run <code>python -m http.server 8000</code> inside web/ and open http://localhost:8000 (opening the HTML file directly does not work).</p>`;
+  });
+</script>
+</body>
+</html>

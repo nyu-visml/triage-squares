@@ -25,8 +25,7 @@ Xtr, ytr, Xte, yte = X[:60000], y[:60000], X[60000:], y[60000:]
 
 models = {
     "rf": RandomForestClassifier(n_estimators=100, random_state=0, n_jobs=-1).fit(Xtr, ytr),
-    # probability=True is slow, so the SVM is trained on 10k images only
-    "svm": SVC(probability=True, random_state=0).fit(Xtr[:10000], ytr[:10000]),
+    "svm": SVC(probability=True, random_state=0).fit(Xtr, ytr),
 }
 
 for name, m in models.items():

@@ -52,13 +52,13 @@ Sensitivity is checked over k ∈ {5, 10, 20, 50} × tau ∈ {0.5, 0.6, 0.7, 0.8
 pip install -r requirements.txt
 
 # Phase 1 – MNIST baseline (local)
-python notebooks/01_mnist_export.py
+# python notebooks/01_mnist_export.py
 
 # Phase 2 – upload 02_cifar_features.py to Colab (GPU runtime), run it,
 #           then download the files it writes into data/ and web/data/sprite.jpg
 
 # Phase 3 – cause assignment (local)
-python notebooks/03_triage.py --k 10 --tau 0.6 --eps 0.2
+# python notebooks/03_triage.py --k 10 --tau 0.6 --eps 0.2
 
 # View
 cd web && python -m http.server 8000   # open http://localhost:8000
@@ -74,7 +74,7 @@ cd web && python -m http.server 8000   # open http://localhost:8000
 
 ## Status
 
-- [ ] Phase 1 · Baseline Squares on MNIST
+- [x] Phase 1 · Baseline Squares on MNIST
 - [ ] Phase 2 · CIFAR-10 predictions and CLIP features
 - [ ] Phase 3 · Cause assignment + cleanlab baseline
 - [ ] Phase 4 · Cause-aware view
