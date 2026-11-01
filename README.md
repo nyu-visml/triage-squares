@@ -35,16 +35,21 @@ The system never sees the answer keys; they are used only in `04_eval`.
 
 For each misclassified test image with label `y` and prediction `p`, find the `k` nearest
 CIFAR-10 *training* images in CLIP space (cosine; near-duplicates with similarity > 0.95 removed).
-Let `f_y` / `f_p` be the fraction of neighbours labelled `y` / `p`.
+Let `f_y` / `f_p` be the fraction of neighbours labelled `y` / `p`. The neighbour majority
+must reach the vote threshold `tau` (default: at least 6 of 10 neighbours).
 
 ```
-if f_p >= tau and f_y <= eps  -> label error
-elif f_y >= tau               -> model weakness (residual)
-else                          -> ambiguous
-defaults: k = 10, tau = 0.6, eps = 0.2
+if f_p >= tau    -> label error       (neighbour majority = prediction)
+elif f_y >= tau  -> model weakness    (neighbour majority = label; residual)
+else             -> ambiguous         (no class reaches tau, a tie, or the majority is a third class)
+defaults: k = 10, tau = 0.6
 ```
 
-Sensitivity is checked over k ∈ {5, 10, 20, 50} × tau ∈ {0.5, 0.6, 0.7, 0.8}.
+`f_p` is also the suspicion score used to order label errors for review.
+
+Sensitivity is checked over k ∈ {5, 10, 20, 50} × tau ∈ {0.5, 0.6, 0.7, 0.8}. With tau > 0.5 the
+three categories are mutually exclusive regardless of the order of checks; at tau = 0.5 a 5–5 tie
+between label and prediction counts as ambiguous.
 
 ## How to run
 
@@ -58,7 +63,7 @@ pip install -r requirements.txt
 #           then download the files it writes into data/ and web/data/sprite.jpg
 
 # Phase 3 – cause assignment (local)
-# python notebooks/03_triage.py --k 10 --tau 0.6 --eps 0.2
+# python notebooks/03_triage.py --k 10 --tau 0.6
 
 # View
 cd web && python -m http.server 8000   # open http://localhost:8000

@@ -6,14 +6,16 @@ Output:
   web/data/cifar10.json  -- one item per test image: i, y, p, s; errors also get
                             cause, f_y, f_p and nbrs (indices into the TRAIN set)
 
-Decision rule (fixed before evaluation; see README):
-  if f_p >= tau and f_y <= eps  -> label
-  elif f_y >= tau               -> model   (residual: errors not explained by the data)
-  else                          -> ambiguous
+Decision rule (fixed before evaluation; see README). Among the k neighbours, the
+majority class must receive at least tau * k votes (default 6 of 10):
+  if f_p >= tau    -> label      (neighbour majority = prediction)
+  elif f_y >= tau  -> model      (neighbour majority = label; residual: errors not explained by the data)
+  else             -> ambiguous  (no class reaches tau, a label/prediction tie, or the majority is a third class)
+f_p doubles as the suspicion score used to order label errors.
 The classifier score s is NOT used for assignment, only for ordering inside the view.
 
 Usage:
-  python notebooks/03_triage.py                          # defaults k=10 tau=0.6 eps=0.2
+  python notebooks/03_triage.py                          # defaults k=10 tau=0.6
   python notebooks/03_triage.py --emb resnet --no-export # ablation E6, no JSON written
 """
 import argparse
@@ -49,19 +51,22 @@ def knn(query, pool, k, dup_thresh=0.95, batch=1000):
     return idx
 
 
-def assign(y, p, nbr_labels, tau=0.6, eps=0.2):
-    """Return (cause array, f_y, f_p) for errors with labels y, predictions p."""
+def assign(y, p, nbr_labels, tau=0.6):
+    """Return (cause array, f_y, f_p) for errors with labels y, predictions p.
+    f_p is also the suspicion score: the higher, the more likely the label is wrong."""
     f_y = (nbr_labels == y[:, None]).mean(1)
     f_p = (nbr_labels == p[:, None]).mean(1)
     cause = np.full(len(y), "ambiguous", dtype=object)
-    cause[f_y >= tau] = "model"
-    cause[(f_p >= tau) & (f_y <= eps)] = "label"  # checked first in the rule; disjoint for tau >= 0.5
+    # For tau > 0.5 at most one class can reach the threshold, so the order of checks does not matter.
+    # For tau <= 0.5 a tie between label and prediction (e.g. 5 vs 5 of 10) counts as ambiguous.
+    cause[(f_y >= tau) & (f_y > f_p)] = "model"
+    cause[(f_p >= tau) & (f_p > f_y)] = "label"
     return cause, f_y, f_p
 
 
 def cause_ranking(err_idx, cause, f_y, f_p):
     """Review order for 'find wrong labels': label errors first (strongest evidence first),
-    then ambiguous, then model weakness."""
+    then ambiguous, then model weakness. Within a cause, higher suspicion (f_p) first."""
     prio = np.array([CAUSES.index(c) for c in cause])
     order = np.lexsort((f_y, -f_p, prio))
     return err_idx[order]
@@ -92,7 +97,6 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--k", type=int, default=10)
     ap.add_argument("--tau", type=float, default=0.6)
-    ap.add_argument("--eps", type=float, default=0.2)
     ap.add_argument("--emb", choices=["clip", "resnet"], default="clip")
     ap.add_argument("--no-export", action="store_true")
     a = ap.parse_args()
@@ -108,7 +112,7 @@ def main():
     print(f"accuracy {1 - len(err) / len(y):.4f}, {len(err)} errors")
 
     nbrs = knn(emb_test[err], emb_train, a.k)
-    cause, f_y, f_p = assign(y[err], p[err], y_train[nbrs], a.tau, a.eps)
+    cause, f_y, f_p = assign(y[err], p[err], y_train[nbrs], a.tau)
     for c in CAUSES:
         print(f"  {c:9s} {np.sum(cause == c):5d}")
 
@@ -138,7 +142,7 @@ def main():
         items[i].update(cause=cause[j], f_y=round(float(f_y[j]), 2),
                         f_p=round(float(f_p[j]), 2), nbrs=nbrs[j].tolist())
     WEB.mkdir(parents=True, exist_ok=True)
-    meta = {"k": a.k, "tau": a.tau, "eps": a.eps, "emb": a.emb}
+    meta = {"k": a.k, "tau": a.tau, "emb": a.emb}
     with open(WEB / "cifar10.json", "w") as f:
         json.dump({"classes": CLASSES, "params": meta, "items": items}, f)
     print(f"wrote {WEB / 'cifar10.json'}")
