@@ -2,15 +2,13 @@
 
 Writes into ./data:
   test_labels.npy      (10000,)       CIFAR-10 test labels (the single label per image)
-  train_labels.npy     (50000,)       CIFAR-10 train labels (neighbour pool)
   test_probs.npy       (10000, 10)    ResNet20 softmax probabilities on the test set
   resnet_test.npy      (10000, 64)    ResNet20 penultimate features (for ablation E6)
-  resnet_train.npy     (50000, 64)
   clip_test.npy        (10000, 512)   CLIP ViT-B/32 image features, L2-normalised
-  clip_train.npy       (50000, 512)
   cifar10h-probs.npy   (10000, 10)    answer key: human label distribution (eval only)
   cifar10_mturk.json                  answer key: validated label errors (eval only)
 and web/data/sprite.jpg (100 x 100 grid of 32x32 test thumbnails, row-major by index).
+Only the test set is needed: neighbours are found among the other test images.
 
 Afterwards download data/*.npy, data/*.json and sprite.jpg to the shared drive / your laptop.
 """
@@ -34,9 +32,7 @@ print("device:", DEV)
 
 # ---------------------------------------------------------------- datasets
 raw_test = torchvision.datasets.CIFAR10(OUT, train=False, download=True)
-raw_train = torchvision.datasets.CIFAR10(OUT, train=True, download=True)
 np.save(f"{OUT}/test_labels.npy", np.array(raw_test.targets))
-np.save(f"{OUT}/train_labels.npy", np.array(raw_train.targets))
 
 # ---------------------------------------------------------------- ResNet20
 # Normalisation used in the model author's training config. Forgetting it ruins accuracy.
@@ -61,12 +57,10 @@ def run_resnet(train):
 
 
 test_probs, resnet_test = run_resnet(train=False)
-_, resnet_train = run_resnet(train=True)
 acc = (test_probs.argmax(1) == np.array(raw_test.targets)).mean()
 print(f"ResNet20 test accuracy: {acc:.4f}  (expect ~0.92; much lower => check normalisation)")
 np.save(f"{OUT}/test_probs.npy", test_probs.astype(np.float32))
 np.save(f"{OUT}/resnet_test.npy", resnet_test.astype(np.float32))
-np.save(f"{OUT}/resnet_train.npy", resnet_train.astype(np.float32))
 
 # ---------------------------------------------------------------- CLIP
 clip = CLIPModel.from_pretrained("openai/clip-vit-base-patch32").to(DEV).eval()
@@ -85,7 +79,6 @@ def run_clip(dataset, bs=256):
 
 
 np.save(f"{OUT}/clip_test.npy", run_clip(raw_test))
-np.save(f"{OUT}/clip_train.npy", run_clip(raw_train))
 print("CLIP features saved")
 
 # ---------------------------------------------------------------- thumbnail sprite

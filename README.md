@@ -13,7 +13,7 @@ space. The main analysis set is the CIFAR-10 test set (10,000 images).
 ```
 CIFAR-10 test ──► ResNet20 ──► predicted class p, score s ─┐
         │                                                  ├─► kNN + rules ─► web/data/cifar10.json ─► D3 view
-        └────────► CLIP ViT-B/32 ◄── CIFAR-10 train (neighbour pool)
+        └────────► CLIP ViT-B/32 ──► k nearest other test images ┘
 Answer keys (CIFAR-10H, confirmed label errors, synthetic flips) ──► evaluation only
 ```
 
@@ -34,7 +34,9 @@ The system never sees the answer keys; they are used only in `04_eval`.
 ## Decision rule (initial version)
 
 For each misclassified test image with label `y` and prediction `p`, find the `k` nearest
-CIFAR-10 *training* images in CLIP space (cosine; near-duplicates with similarity > 0.95 removed).
+*other* test images in CLIP space (cosine; the image itself excluded), so each label is judged
+only by the labels of other images. In synthetic-flip experiments the neighbours carry the
+flipped labels too, so the noise in the votes matches the noise being detected.
 Let `f_y` / `f_p` be the fraction of neighbours labelled `y` / `p`. The neighbour majority
 must reach the vote threshold `tau` (default: at least 6 of 10 neighbours).
 
@@ -45,7 +47,7 @@ else             -> ambiguous         (no class reaches tau, a tie, or the major
 defaults: k = 10, tau = 0.6
 ```
 
-`f_p` is also the suspicion score used to order label errors for review.
+`f_p` is also the suspicion score: all errors are reviewed by `f_p`, highest first (ties broken by the classifier score `s`).
 
 Sensitivity is checked over k ∈ {5, 10, 20, 50} × tau ∈ {0.5, 0.6, 0.7, 0.8}. With tau > 0.5 the
 three categories are mutually exclusive regardless of the order of checks; at tau = 0.5 a 5–5 tie

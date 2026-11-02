@@ -1,17 +1,21 @@
 """Phase 3: assign a likely cause to every misclassified CIFAR-10 test image.
 
 Inputs (from 02_cifar_features.py, in ./data):
-  test_labels.npy, train_labels.npy, test_probs.npy, clip_test.npy, clip_train.npy
+  test_labels.npy, test_probs.npy, clip_test.npy
 Output:
   web/data/cifar10.json  -- one item per test image: i, y, p, s; errors also get
-                            cause, f_y, f_p and nbrs (indices into the TRAIN set)
+                            cause, f_y, f_p and nbrs (indices into the TEST set)
+
+Neighbours are the k nearest OTHER test images in CLIP space (the image itself is
+excluded), so each label is judged only by the labels of other images. With flipped
+labels (evaluation) the neighbours carry the flipped labels too.
 
 Decision rule (fixed before evaluation; see README). Among the k neighbours, the
 majority class must receive at least tau * k votes (default 6 of 10):
   if f_p >= tau    -> label      (neighbour majority = prediction)
   elif f_y >= tau  -> model      (neighbour majority = label; residual: errors not explained by the data)
   else             -> ambiguous  (no class reaches tau, a label/prediction tie, or the majority is a third class)
-f_p doubles as the suspicion score used to order label errors.
+f_p doubles as the suspicion score: all errors are reviewed by f_p, highest first (ties by score s).
 The classifier score s is NOT used for assignment, only for ordering inside the view.
 
 Usage:
@@ -37,14 +41,16 @@ def l2norm(x):
     return x / np.linalg.norm(x, axis=1, keepdims=True).clip(min=1e-12)
 
 
-def knn(query, pool, k, dup_thresh=0.95, batch=1000):
-    """Cosine kNN of each query row in pool. Neighbours with similarity > dup_thresh
-    (near-duplicates between CIFAR-10 test and train) are dropped."""
-    query, pool = l2norm(query), l2norm(pool)
-    idx = np.empty((len(query), k), dtype=np.int64)
-    for s in range(0, len(query), batch):
-        S = query[s:s + batch] @ pool.T
-        S[S > dup_thresh] = -np.inf
+def knn(emb, k, batch=1000):
+    """Cosine kNN of every image among the OTHER images of the same set (self excluded).
+    The neighbour indices do not depend on the labels, so compute them once and reuse
+    them with clean or flipped labels."""
+    emb = l2norm(emb)
+    idx = np.empty((len(emb), k), dtype=np.int64)
+    for s in range(0, len(emb), batch):
+        S = emb[s:s + batch] @ emb.T
+        rows = np.arange(len(S))
+        S[rows, s + rows] = -np.inf                          # exclude the image itself
         part = np.argpartition(-S, k, axis=1)[:, :k]
         order = np.argsort(-np.take_along_axis(S, part, 1), axis=1)
         idx[s:s + batch] = np.take_along_axis(part, order, 1)
@@ -64,11 +70,20 @@ def assign(y, p, nbr_labels, tau=0.6):
     return cause, f_y, f_p
 
 
-def cause_ranking(err_idx, cause, f_y, f_p):
-    """Review order for 'find wrong labels': label errors first (strongest evidence first),
-    then ambiguous, then model weakness. Within a cause, higher suspicion (f_p) first."""
-    prio = np.array([CAUSES.index(c) for c in cause])
-    order = np.lexsort((f_y, -f_p, prio))
+def triage(labels, preds, nbrs, tau=0.6):
+    """Assign a cause to every error under the given labels (clean or flipped).
+    nbrs: (N, k) neighbour indices from knn(). The votes use the same labels, so
+    flipped labels also contaminate the neighbours, as they would in practice.
+    Returns (err indices, cause, f_y, f_p)."""
+    err = np.flatnonzero(preds != labels)
+    cause, f_y, f_p = assign(labels[err], preds[err], labels[nbrs[err]], tau)
+    return err, cause, f_y, f_p
+
+
+def suspicion_ranking(err_idx, f_p, s):
+    """Review order for 'find wrong labels' (E2, "ours"): all errors by suspicion f_p,
+    highest first; ties (f_p takes only k + 1 values) broken by classifier score s, highest first."""
+    order = np.lexsort((-s, -f_p))
     return err_idx[order]
 
 
@@ -102,17 +117,14 @@ def main():
     a = ap.parse_args()
 
     y = np.load(DATA / "test_labels.npy")
-    y_train = np.load(DATA / "train_labels.npy")
     probs = np.load(DATA / "test_probs.npy")
-    emb_test = np.load(DATA / f"{a.emb}_test.npy")
-    emb_train = np.load(DATA / f"{a.emb}_train.npy")
+    emb = np.load(DATA / f"{a.emb}_test.npy")
 
     p, s = probs.argmax(1), probs.max(1)
-    err = np.flatnonzero(p != y)
+    nbrs_all = knn(emb, a.k)
+    err, cause, f_y, f_p = triage(y, p, nbrs_all, a.tau)
+    nbrs = nbrs_all[err]
     print(f"accuracy {1 - len(err) / len(y):.4f}, {len(err)} errors")
-
-    nbrs = knn(emb_test[err], emb_train, a.k)
-    cause, f_y, f_p = assign(y[err], p[err], y_train[nbrs], a.tau)
     for c in CAUSES:
         print(f"  {c:9s} {np.sum(cause == c):5d}")
 
@@ -124,8 +136,8 @@ def main():
         pos = {int(i): j for j, i in enumerate(err)}
         print("  their assigned causes:",
               {c: int(sum(cause[pos[i]] == c for i in hit)) for c in CAUSES})
-        ours = cause_ranking(err, cause, f_y, f_p)
-        print(f"  recall@50  cause-based {recall_at(ours, truth, 50):.3f}")
+        ours = suspicion_ranking(err, f_p, s[err])
+        print(f"  recall@50  suspicion   {recall_at(ours, truth, 50):.3f}")
         print(f"  recall@50  score-based {recall_at(err[np.argsort(-s[err])], truth, 50):.3f}")
         try:
             from cleanlab.filter import find_label_issues
