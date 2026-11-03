@@ -18,9 +18,8 @@
 const Squares = (() => {
   const BINS = 10;
   const BASE_KEYS = new Set(["i", "y", "p", "s", "nbrs"]);
-  // Tableau10: ten clearly separable hues. (ColorBrewer Paired puts similar hues in
-  // pairs and its light shades are hard to read as stripes.)
-  const PALETTE = d3.schemeTableau10;
+  // ColorBrewer Paired, as in the original paper for 6-12 classes (Ren et al., Sec. 4.2).
+  const PALETTE = d3.schemePaired;
 
   const binOf = s => Math.min(BINS - 1, Math.max(0, Math.floor(s * BINS)));
   const kindLabel = { tp: "Correct", fp: "False positive", fn: "False negative" };
@@ -188,6 +187,19 @@ const Squares = (() => {
     extra.forEach(k => tr.append("td").text(d => d[k] ?? ""));
   }
 
+  // ---------------------------------------------------------------- consistency check
+  // Per-class TP / FP / FN counted from the groups that are actually drawn, to compare
+  // with sklearn's confusion matrix (notebooks/check_counts.py).
+  function counts(data) {
+    const { groups } = buildGroups(data);
+    return data.classes.map((name, c) => {
+      const sum = (side, kind) => d3.sum(groups.filter(g => g.col === c && g.side === side && g.kind === kind),
+                                         g => g.items.length);
+      return { class: name, TP: sum("right", "tp"), FP: sum("right", "fp"), FN: sum("left", "fn") };
+    });
+  }
+
+
   // ---------------------------------------------------------------- public
   // panels: [{title, file}]; options: see defaults below
   async function render(root, panelsSpec, options = {}) {
@@ -197,6 +209,8 @@ const Squares = (() => {
       const data = await d3.json(p.file);
       return { ...p, id: `panel${k}`, data, built: buildGroups(data) };
     }));
+
+    panels.forEach(p => { console.log(`Counts drawn for ${p.title}:`); console.table(counts(p.data)); });
 
     const tooltip = (() => {
       const tip = d3.select("body").selectAll("div.sq-tooltip").data([0]).join("div").attr("class", "sq-tooltip");
@@ -237,5 +251,5 @@ const Squares = (() => {
     return { setScale: s => { opts.scale = s; draw(); } };
   }
 
-  return { render, binOf };
+  return { render, binOf, counts };
 })();
