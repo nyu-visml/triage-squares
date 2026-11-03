@@ -27,7 +27,7 @@ The system never sees the answer keys; they are used only in `04_eval`.
 | `notebooks/02_cifar_features.py` | Run once on Colab (GPU): ResNet20 probabilities, CLIP features, thumbnail sprite, answer keys |
 | `notebooks/03_triage.py` | kNN in CLIP space + decision rules → `web/data/cifar10.json`; quick checks and cleanlab baseline |
 | `notebooks/04_eval.ipynb` | Evaluation E1–E6 (to be added) |
-| `web/` | D3 Squares view (`index.html`, `squares.js`, `style.css`) and the JSON it reads |
+| `web/` | D3 Squares view (`index.html` with inline styles, `squares.js`) and the JSON it reads |
 | `data/` | Raw data and `.npy` features — **not tracked by git** (shared drive) |
 | `results/` | Figures for the report |
 
